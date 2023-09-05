@@ -1,6 +1,9 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using ProvaApi.Database;
 using ProvaApi.Model.Request;
+using System.Runtime.ConstrainedExecution;
 using System.Security.Cryptography.X509Certificates;
 
 // Classe Controller: contiene i metodi che rispondono alle richieste HTTP
@@ -10,15 +13,24 @@ namespace ProvaApi.Controllers
     [ApiController]
     public class UserController : ControllerBase
     {
-        private static FakeDatabase database = new FakeDatabase();
+        // Inietta il DbContext nel controller
+        private readonly UserRepository _userRepository;
+
+        public UserController(UserRepository userRepository)
+        {
+            _userRepository = userRepository;
+        }
+
 
         [HttpGet]
         public IActionResult AllUsers(int? gender)
         {
             if(gender == null)
-            {
+            {   
+                // Ottieni tutti gli utenti dal db
+                List<UserEntity> users = _userRepository.GetAllUsers();
                 // Mappa tutti i generi come stringa
-                List<UserModel> usersGenderResponses = database.Users.Select(MapUserEntityToUserModel).ToList();
+                List<UserModel> usersGenderResponses = users.Select(MapUserEntityToUserModel).ToList();
                 return Ok(usersGenderResponses);
             }
             else
@@ -40,15 +52,15 @@ namespace ProvaApi.Controllers
                 }
 
                 // Crea una lista con tutti gli utenti del genere richiesto
-                var usersWithGender = database.Users.Where(user => user.Gender == gender).ToList();
+                var usersWithGenderInt = _userRepository.GetUsersByGender((int)gender);
 
-                if(usersWithGender.Count == 0)
+                if(usersWithGenderInt.Count == 0)
                 {
                     return NotFound("Attenzione: Nessun utente trovato");
                 }
 
                 // Mappa la lista di utenti con il genere convertito a stringa
-                List<UserModel> usersGenderResponses = usersWithGender.Select(MapUserEntityToUserModel).ToList();
+                List<UserModel> usersGenderResponses = usersWithGenderInt.Select(MapUserEntityToUserModel).ToList();
 
                 return Ok(new
                 {
@@ -63,7 +75,7 @@ namespace ProvaApi.Controllers
         public IActionResult GetUserById(int id)
         {
             // Trova il primo utente con l'id richiesto nel db
-            var user = database.Users.FirstOrDefault(user => user.Id == id);
+            var user = _userRepository.GetUserById(id);
             if (user == null)
             {
                 return NotFound("Attenzione: Utente non trovato"); // NotFound è un metodo del framework che restituisce uno statusCode 404
@@ -72,84 +84,43 @@ namespace ProvaApi.Controllers
         }
 
         [HttpDelete]
-        public IActionResult DeleteUser(int? id, int? gender)
+        public IActionResult DeleteUser(int id)
         {
-            if(id != null)
-            {
-                var user = database.Users.FirstOrDefault(x => x.Id == id);
-                if(user == null)
-                {
-                    return NotFound("Attenzione: Utente non trovato");
-                }
-                database.Users.Remove(user);
-                UserModel userModel = MapUserEntityToUserModel(user);
-                return Ok(new
-                {
-                    Message = "Utente eliminato",
-                    User = userModel
-                });
-            }
-            else if(gender != null)
-            {
-                var usersToDelete = database.Users.Where(user => user.Gender == gender).ToList();
-
-                if(usersToDelete.Count == 0)
-                {
-                    return NotFound("Attenzione: Nessun utente trovato");
-                }
-                foreach(var user in usersToDelete)
-                {
-                    database.Users.Remove(user);
-                }
-                List<UserModel> usersModel = usersToDelete.Select(MapUserEntityToUserModel).ToList();
-                return Ok(new
-                {
-                    Message = "Utenti eliminati",
-                    Users = usersModel
-                });
-            }
-            else
-            {
-                return BadRequest("Attenzione: Id o Genere non specificati");
-            }
+            _userRepository.DeleteUser(id);
+            return Ok("Utente eliminato");
         }
 
         // Aggiunta utenti: i dati sono molti e strutturati, quindi i dati in POST devono essere passati nel BODY della richiesta
         [HttpPost]
         public IActionResult AddUser([FromBody]AddUserRequest request)
         {
-            database.AddUser(new UserEntity
+            // Crea un nuovo oggetto UserEntity a partire dai dati ricevuti nella richiesta
+            var newUser = new UserEntity
             {
-                Name = request.Name,
+                UserName = request.UserName,
                 Password = request.Password,
+                Name = request.Name,
                 Surname = request.Surname,
-                UserName = request.UserName, 
                 Gender = request.Gender,
                 DriverLicense = request.DriverLicense
-            }); 
+            };
+
+            // Aggiungi il nuovo utente al database utilizzando il contesto MyDbContext
+            _userRepository.AddUser(newUser);
+
+            // Restituisci una risposta appropriata
             return Ok("Utente aggiunto");
         }
 
+
         // Modifica utenti: i dati sono molti e strutturati, quindi i dati in PUT devono essere passati nel BODY della richiesta
         [HttpPut]
-        public IActionResult UpdateUsers([FromBody]UpdateUserRequest request)
+        public IActionResult UpdateUser([FromBody] UserEntity updatedUser)
         {
-            var currentUser = database.Users.FirstOrDefault(user => user.Id == request.Id);
-
-            if(currentUser == null)
-            {
-                return NotFound("Attenzione: Utente non trovato");
-            }
-
-            currentUser.UserName = request.UserName;
-            currentUser.Name = request.Name;
-            currentUser.Password = request.Password;
-            currentUser.Surname = request.Surname;
-            currentUser.DriverLicense = request.DriverLicense;
-            currentUser.Gender = request.Gender;
+            _userRepository.UpdateUser(updatedUser);
             return Ok("Utente modificato");
-
         }
+
 
         private UserModel MapUserEntityToUserModel(UserEntity user)
         {
