@@ -3,6 +3,7 @@ using ProvaApi.Database;
 using ProvaApi.Model.Request;
 using System.Security.Cryptography.X509Certificates;
 
+// Classe Controller: contiene i metodi che rispondono alle richieste HTTP
 namespace ProvaApi.Controllers
 {
     [Route("api/[controller]")]  // Questa annotazione serve per dire che questa classe è un controller
