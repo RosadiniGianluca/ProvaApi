@@ -21,7 +21,6 @@ namespace ProvaApi.Controllers
             _userRepository = userRepository;
         }
 
-
         [HttpGet]
         public IActionResult AllUsers(int? gender)
         {
